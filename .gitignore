@@ -1,0 +1,13 @@
+# CLion specific
+.idea/
+cmake-build-*/
+*.dll
+*.exe
+*.obj
+*.o
+
+# Python specific
+__pycache__/
+*.pyc
+venv/
+.env
