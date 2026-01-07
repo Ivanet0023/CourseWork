@@ -40,7 +40,7 @@ public:
     }
 };
 
-// CLASS DECK
+// DECK
 class Deck {
 private:
     vector<Card> cards;
@@ -76,7 +76,7 @@ public:
     void addCard(Card c) { cards.push_back(c); }
 };
 
-// CLASS CARD PILE
+// CARDPILE
 class CardPile {
 protected:
     vector<Card> cards;
@@ -129,7 +129,7 @@ public:
     virtual bool canAddCard(const Card& cardToAdd) const = 0;
 };
 
-// CLASS TABLEAU
+// TABLEAU
 class Tableau : public CardPile {
 public:
     bool canAddCard(const Card& cardToAdd) const override {
@@ -158,7 +158,7 @@ public:
     }
 };
 
-// CLASS FOUNDATION
+// FOUNDATION
 class Foundation : public CardPile {
 public:
     bool canAddCard(const Card& cardToAdd) const override {
@@ -171,12 +171,13 @@ public:
     }
 };
 
-// CLASS WASTE & STOCK
+// WASTE
 class Waste : public CardPile {
 public:
-    bool canAddCard(const Card& c) const override { return false; } // Гравцю сюди класти не можна
+    bool canAddCard(const Card& c) const override { return false; }
 };
 
+// STOCK
 class Stock : public CardPile {
 public:
     bool canAddCard(const Card& c) const override { return false; }
@@ -185,22 +186,59 @@ public:
         if (!this->isEmpty()) return;
         while (!wastePile.isEmpty()) {
             Card c = wastePile.removeTop();
-            c.flip(); // Закриваємо
+            c.flip();
             this->addCard(c);
         }
     }
 };
 
-// CLASS GAME (UPDATED)
+// CLASS GAME
 class Game {
 private:
     Deck deck;
+    Deck initialDeck;
+
     Stock stock;
     Waste waste;
     vector<Foundation> foundations;
     vector<Tableau> tableaus;
+
     int movesCount;
     bool gameInProgress;
+
+    struct GameState {
+        Deck deck;
+        Stock stock;
+        Waste waste;
+        vector<Foundation> foundations;
+        vector<Tableau> tableaus;
+        int movesCount;
+    };
+    vector<GameState> history;
+
+    void dealCards() {
+        stock = Stock();
+        waste = Waste();
+        for(auto& f : foundations) f = Foundation();
+        for(auto& t : tableaus) t = Tableau();
+
+        history.clear();
+        movesCount = 0;
+
+        for (int i = 0; i < 7; ++i) {
+            for (int j = 0; j <= i; ++j) {
+                Card c = deck.draw();
+                if (j == i) c.setFaceUp(true);
+                else c.setFaceUp(false);
+                tableaus[i].addCard(c);
+            }
+        }
+        while (!deck.isEmpty()) {
+            Card c = deck.draw();
+            c.setFaceUp(false);
+            stock.addCard(c);
+        }
+    }
 
 public:
     Game() {
@@ -211,30 +249,48 @@ public:
     }
 
     void startGame() {
-        movesCount = 0;
         gameInProgress = true;
-
-        stock = Stock();
-        waste = Waste();
-        for(auto& f : foundations) f = Foundation();
-        for(auto& t : tableaus) t = Tableau();
-
         deck.initialize();
         deck.shuffle();
 
-        for (int i = 0; i < 7; ++i) {
-            for (int j = 0; j <= i; ++j) {
-                Card c = deck.draw();
-                if (j == i) c.flip();
-                tableaus[i].addCard(c);
-            }
-        }
-        while (!deck.isEmpty()) {
-            stock.addCard(deck.draw());
-        }
+        initialDeck = deck;
+
+        dealCards();
+    }
+
+    void restartCurrentGame() {
+        if (!gameInProgress) return;
+
+        deck = initialDeck;
+        dealCards();
+    }
+
+    void saveState() {
+        GameState state;
+        state.deck = deck;
+        state.stock = stock;
+        state.waste = waste;
+        state.foundations = foundations;
+        state.tableaus = tableaus;
+        state.movesCount = movesCount;
+        history.push_back(state);
+    }
+
+    bool undo() {
+        if (history.empty()) return false;
+        GameState lastState = history.back();
+        history.pop_back();
+        deck = lastState.deck;
+        stock = lastState.stock;
+        waste = lastState.waste;
+        foundations = lastState.foundations;
+        tableaus = lastState.tableaus;
+        movesCount = lastState.movesCount;
+        return true;
     }
 
     void drawCardFromStock() {
+        saveState();
         if (stock.isEmpty()) {
             stock.refillFromWaste(waste);
         } else {
@@ -251,60 +307,37 @@ public:
         CardPile* source = nullptr;
         CardPile* dest = nullptr;
 
-        if (fromPileType == 0) {
-            if (fromIndex < 0 || fromIndex >= 7) return false;
-            source = &tableaus[fromIndex];
-        } else if (fromPileType == 1) {
-             if (fromIndex < 0 || fromIndex >= 4) return false;
-             source = &foundations[fromIndex];
-        } else if (fromPileType == 2) {
-             source = &waste;
-             if (numCards != 1) return false;
-        } else { return false; }
+        if (fromPileType == 0) source = &tableaus[fromIndex];
+        else if (fromPileType == 1) source = &foundations[fromIndex];
+        else if (fromPileType == 2) source = &waste;
 
-        if (toPileType == 0) {
-             if (toIndex < 0 || toIndex >= 7) return false;
-             dest = &tableaus[toIndex];
-        } else if (toPileType == 1) {
-             if (toIndex < 0 || toIndex >= 4) return false;
-             dest = &foundations[toIndex];
-             if (numCards != 1) return false;
-        } else { return false; }
+        if (toPileType == 0) dest = &tableaus[toIndex];
+        else if (toPileType == 1) dest = &foundations[toIndex];
 
-        if (source->isEmpty()) return false;
-        if (source->size() < numCards) return false;
+        if (!source || !dest) return false;
+        if (source->isEmpty() || source->size() < numCards) return false;
 
         Card* cardToPlace = source->getCardFromTop(numCards - 1);
-
-        if (cardToPlace == nullptr) return false;
-        if (!cardToPlace->getFaceUp()) return false; // Не можна брати закриті карти
+        if (!cardToPlace || !cardToPlace->getFaceUp()) return false;
 
         if (dest->canAddCard(*cardToPlace)) {
+            saveState();
             vector<Card> movingCards = source->popCards(numCards);
             dest->pushCards(movingCards);
-
-            if (fromPileType == 0) { // Якщо брали з Tableau
-                 static_cast<Tableau*>(source)->revealTop();
-            }
-
+            if (fromPileType == 0) static_cast<Tableau*>(source)->revealTop();
             movesCount++;
             return true;
         }
-
         return false;
     }
 
+    // Геттери
     const vector<Tableau>& getTableaus() const { return tableaus; }
     const vector<Foundation>& getFoundations() const { return foundations; }
     const Stock& getStock() const { return stock; }
     const Waste& getWaste() const { return waste; }
     int getMoves() const { return movesCount; }
-
-    bool isWin() {
-        int total = 0;
-        for(auto& f : foundations) total += f.size();
-        return total == 52;
-    }
+    bool isWin() { int t=0; for(auto& f:foundations) t+=f.size(); return t==52; }
 };
 
 extern "C" {
@@ -392,5 +425,11 @@ extern "C" {
     __declspec(dllexport) bool Game_IsWin(Game* game) {
         if (game != nullptr) return game->isWin();
         return false;
+    }
+    __declspec(dllexport) void Game_Undo(Game* game) {
+        if (game != nullptr) game->undo();
+    }
+    __declspec(dllexport) void Game_RestartCurrent(Game* game) {
+        if (game != nullptr) game->restartCurrentGame();
     }
 }
