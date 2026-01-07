@@ -97,6 +97,7 @@ class SolitaireApp:
         self.menu_frame.pack(fill="both", expand=True)
 
     def return_to_menu(self):
+        self.engine = None
         was_running = self.timer_running
         self.timer_running = False
 
