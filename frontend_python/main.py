@@ -107,14 +107,18 @@ class SolitaireApp:
                 self.timer_running = True
                 self.update_timer()
 
-    def start_new_game(self):
-        try:
-            self.engine = SolitaireEngine()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
+def start_new_game(self):
+    if self.engine:
+        if not messagebox.askyesno("Нова гра", "Почати нову гру? Поточний прогрес буде втрачено."):
             return
 
-        self.setup_game_ui()
+    try:
+        self.engine = SolitaireEngine()
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+        return
+
+    self.setup_game_ui()
 
     def restart_current_deal(self):
         if self.engine:
